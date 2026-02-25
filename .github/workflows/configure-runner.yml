@@ -98,7 +98,6 @@ jobs:
               --token ${{ secrets.RUNNER_TOKEN }}
 
             sudo ./run.sh
-
-            echo "Runner configured and started successfully!"
+            
           EOF
 
