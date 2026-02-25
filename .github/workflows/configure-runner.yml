@@ -71,32 +71,51 @@ jobs:
             sleep 10
           done
 
-      - name: Configure GitHub Actions Runner
+      - name: SSH into Runner EC2 and install Git Runner
         run: |
-          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.pulumi-outputs.outputs.runner_ip }} << 'EOF'
+            set -e
 
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP << 'ENDSSH'
-            cd /home/ubuntu/actions-runner
-            if [ ! -f .runner ]; then
-              echo "Configuring GitHub Actions runner..."
-              sudo ./config.sh \
-                --url https://github.com/kaziiriad/flatris \
-                --token ${{ secrets.RUNNER_TOKEN }} \
-                --name flatris-runner \
-                --labels self-hosted,aws,ap-southeast-1
-              sudo ./svc.sh install ubuntu
-              sudo ./svc.sh start
-              echo "Runner configured and started!"
-            else
-              echo "Runner already configured, restarting..."
-              sudo ./svc.sh stop
-              sudo ./svc.sh start
-              echo "Runner restarted!"
+            # Stop and remove old runner if exists
+            if [ -d "/home/ubuntu/actions-runner" ]; then
+              cd /home/ubuntu/actions-runner
+              sudo ./svc.sh stop || true
+              sudo ./svc.sh uninstall || true
+              cd /home/ubuntu
+              sudo rm -rf actions-runner
             fi
-          ENDSSH
 
-      - name: Verify runner status
+            if [ ! -d "actions-runner" ]; then
+              # Create and setup actions-runner
+              mkdir actions-runner && cd actions-runner
+
+              curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
+
+              echo "5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7  actions-runner-linux-x64-2.331.0.tar.gz" | shasum -a 256 -c
+
+              tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
+              rm -f actions-runner-linux-x64-2.331.0.tar.gz
+
+              # Configure the runner
+              ./config.sh \
+                --url https://github.com/kaziiriad/flatris \
+                --token ${{ secrets.RUNNER_TOKEN }}
+
+              # Install and start as a service
+              sudo ./run.sh
+
+              echo "Runner configured and started successfully!"
+            else
+              echo "actions-runner directory already exists. Skipping installation."
+            fi
+          EOF
+
+      - name: SSH into Runner instance and install Ansible
         run: |
-          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP \
-            "sudo ./actions-runner/svc.sh status" || true
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.pulumi-outputs.outputs.runner_ip }} << 'EOF'
+          sudo apt-get update -y
+          sudo apt install software-properties-common -y
+          sudo apt-add-repository --yes --update ppa:ansible/ansible
+          sudo apt-get install -y ansible
+          ansible --version
+          EOF
