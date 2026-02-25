@@ -31,33 +31,27 @@ jobs:
       - name: Setup Pulumi
         run: |
           curl -fsSL https://get.pulumi.com | sh
-          export PATH=$PATH:$HOME/.pulumi/bin
-          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+          echo "$PATH" >> $GITHUB_PATH
 
       - name: Setup uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          export PATH=$PATH:$HOME/.cargo/bin
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Pulumi login
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        run: |
-          export PATH=$PATH:$HOME/.pulumi/bin
-          pulumi login
+        run: pulumi login
 
       - name: Select Pulumi stack
         run: |
           cd infra
-          export PATH=$PATH:$HOME/.pulumi/bin
           pulumi stack select flatris-dev
 
       - name: Get Runner IP from Pulumi
         id: pulumi-outputs
         run: |
           cd infra
-          export PATH=$PATH:$HOME/.pulumi/bin:$HOME/.cargo/bin
           uv sync
           RUNNER_IP=$(pulumi stack output runner_public_ip)
           echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
@@ -71,59 +65,40 @@ jobs:
           for i in {1..30}; do
             if ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$RUNNER_IP "echo ready" 2>/dev/null; then
               echo "Runner is ready!"
-              exit 0
+              break
             fi
             echo "Attempt $i: Runner not ready yet, waiting 10 seconds..."
             sleep 10
           done
-          
-          echo "Runner failed to become ready"
-          exit 1
 
-      - name: Configure GitHub Actions Runner
-        env:
-          RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+      - name: SSH into Runner EC2 and install Git Runner
         run: |
-          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.pulumi-outputs.outputs.runner_ip }} << EOF
+            set -e
 
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP bash << 'ENDSSH'
-            # Create actions-runner directory if it doesn't exist
-            if [ ! -d "/home/ubuntu/actions-runner" ]; then
-              echo "Downloading and setting up GitHub Actions runner..."
-              mkdir -p /home/ubuntu/actions-runner
+            if [ -d "/home/ubuntu/actions-runner" ]; then
               cd /home/ubuntu/actions-runner
-
-              # Download runner
-              curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
-              echo "5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7  actions-runner-linux-x64-2.331.0.tar.gz" | shasum -a 256 -c
-              tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
-              rm -f actions-runner-linux-x64-2.331.0.tar.gz
-            else
-              cd /home/ubuntu/actions-runner
-            fi
-
-            # Configure or reconfigure the runner
-            if [ ! -f .runner ]; then
-              echo "Configuring GitHub Actions runner..."
-              sudo ./config.sh \
-                --url https://github.com/kaziiriad/flatris \
-                --token $RUNNER_TOKEN \
-                --name flatris-runner \
-                --labels self-hosted,aws,ap-southeast-1 \
-                --unattended
-              sudo ./svc.sh install ubuntu
-              sudo ./svc.sh start
-              echo "Runner configured and started!"
-            else
-              echo "Runner already configured, restarting..."
               sudo ./svc.sh stop || true
-              sudo ./svc.sh start
-              echo "Runner restarted!"
+              sudo ./svc.sh uninstall || true
+              cd /home/ubuntu
+              sudo rm -rf actions-runner
             fi
-          ENDSSH
 
-      - name: Verify runner status
-        run: |
-          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP \
-            "sudo /home/ubuntu/actions-runner/svc.sh status" || true
+            mkdir actions-runner && cd actions-runner
+
+            curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
+
+            echo "5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7  actions-runner-linux-x64-2.331.0.tar.gz" | shasum -a 256 -c
+
+            tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
+            rm -f actions-runner-linux-x64-2.331.0.tar.gz
+
+            ./config.sh \
+              --url https://github.com/kaziiriad/flatris \
+              --token ${{ secrets.RUNNER_TOKEN }}
+
+            sudo ./run.sh
+
+            echo "Runner configured and started successfully!"
+          EOF
+
