@@ -70,28 +70,38 @@ jobs:
 
       - name: Setup Pulumi
         run: |
-          curl -fsSL https://get.pulumi.com | sh
-          echo "$PATH" >> $GITHUB_PATH
+          if ! command -v pulumi &> /dev/null; then
+            curl -fsSL https://get.pulumi.com | sh
+            export PATH=$PATH:$HOME/.pulumi/bin
+            echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+          fi
 
       - name: Setup uv
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          if ! command -v uv &> /dev/null; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH=$PATH:$HOME/.cargo/bin
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          fi
 
       - name: Pulumi login
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        run: pulumi login
+        run: |
+          export PATH=$PATH:$HOME/.pulumi/bin
+          pulumi login
 
       - name: Select Pulumi stack
         run: |
           cd infra
+          export PATH=$PATH:$HOME/.pulumi/bin
           pulumi stack select flatris-dev
 
       - name: Get Pulumi outputs
         id: pulumi-outputs
         run: |
           cd infra
+          export PATH=$PATH:$HOME/.pulumi/bin:$HOME/.cargo/bin
           uv sync
           # Get app IPs from Pulumi stack outputs
           APP_PRIVATE_IP=$(pulumi stack output flatris_app_private_ip)
@@ -104,17 +114,20 @@ jobs:
 
       - name: Wait for app instance to be ready
         run: |
-          APP_PRIVATE_IP="${{ env.APP_PRIVATE_IP }}"
-          echo "Waiting for app at $APP_PRIVATE_IP to be ready..."
+          APP_PUBLIC_IP="${{ env.app_public_ip }}"
+          echo "Waiting for app at $APP_PUBLIC_IP to be ready..."
 
           for i in {1..30}; do
-            if ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$APP_PRIVATE_IP "echo ready" 2>/dev/null; then
+            if ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$APP_PUBLIC_IP "echo ready" 2>/dev/null; then
               echo "App instance is ready!"
-              break
+              exit 0
             fi
             echo "Attempt $i: App not ready yet, waiting 10 seconds..."
             sleep 10
           done
+          
+          echo "App instance failed to become ready"
+          exit 1
 
       - name: Install Ansible collections
         run: |
@@ -138,14 +151,15 @@ jobs:
 
       - name: Health check
         run: |
-          APP_PRIVATE_IP="${{ env.APP_PRIVATE_IP }}"
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$APP_PRIVATE_IP \
+          APP_PUBLIC_IP="${{ env.app_public_ip }}"
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$APP_PUBLIC_IP \
             "curl -f http://localhost:3000/favicon.ico"
 
       - name: Get deployment URL
         id: deployment-url
         run: |
           cd infra
+          export PATH=$PATH:$HOME/.pulumi/bin:$HOME/.cargo/bin
           URL=$(pulumi stack output flatris_url)
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "Deployment URL: $URL"
@@ -156,5 +170,5 @@ jobs:
           echo "Deployment Complete!"
           echo "==================================="
           echo "Flatris URL: ${{ steps.deployment-url.outputs.url }}"
-          echo "App Public IP: ${{ env.APP_PUBLIC_IP }}"
+          echo "App Public IP: ${{ env.app_public_ip }}"
           echo "==================================="
