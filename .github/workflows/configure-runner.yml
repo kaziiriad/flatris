@@ -94,9 +94,9 @@ jobs:
             rm -f actions-runner-linux-x64-2.331.0.tar.gz
 
             ./config.sh \
-              --unattended
+              --unattended \
               --url https://github.com/kaziiriad/flatris \
-              --token ${{ secrets.RUNNER_TOKEN }}
+              --token ${{ secrets.RUNNER_TOKEN }} \
               --name flatris
 
             ./run.sh
