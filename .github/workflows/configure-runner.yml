@@ -87,7 +87,22 @@ jobs:
           RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
 
           ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP bash << 'ENDSSH'
-            cd /home/ubuntu/actions-runner
+            # Create actions-runner directory if it doesn't exist
+            if [ ! -d "/home/ubuntu/actions-runner" ]; then
+              echo "Downloading and setting up GitHub Actions runner..."
+              mkdir -p /home/ubuntu/actions-runner
+              cd /home/ubuntu/actions-runner
+
+              # Download runner
+              curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
+              echo "5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7  actions-runner-linux-x64-2.331.0.tar.gz" | shasum -a 256 -c
+              tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
+              rm -f actions-runner-linux-x64-2.331.0.tar.gz
+            else
+              cd /home/ubuntu/actions-runner
+            fi
+
+            # Configure or reconfigure the runner
             if [ ! -f .runner ]; then
               echo "Configuring GitHub Actions runner..."
               sudo ./config.sh \
