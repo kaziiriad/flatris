@@ -41,7 +41,7 @@ jobs:
       - name: Select Pulumi stack
         run: |
           cd infra
-          pulumi stack select dev
+          pulumi stack select flatris-dev
 
       - name: Deploy infrastructure with Pulumi
         run: |

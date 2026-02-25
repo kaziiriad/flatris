@@ -73,7 +73,7 @@ jobs:
       - name: Select Pulumi stack
         run: |
           cd infra
-          pulumi stack select dev
+          pulumi stack select flatris-dev
 
       - name: Get Pulumi outputs
         id: pulumi-outputs
