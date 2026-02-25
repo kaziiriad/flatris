@@ -162,7 +162,8 @@ echo "Flatris app instance ready!"
 """
 
 # User data script for GitHub Runner instance
-# Note: Token and configuration will be done via GitHub Actions workflow using secrets
+# Note: Runner installation will be done via GitHub Actions workflow using secrets
+# This only installs prerequisites (Docker, git, python, etc.)
 runner_user_data = """#!/bin/bash
 # Update system
 apt-get update -y
@@ -172,31 +173,10 @@ curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 usermod -aG docker ubuntu
 
-# Install GitHub Actions Runner
-cd /home/ubuntu
-mkdir -p actions-runner
-cd actions-runner
+# Install useful tools
+apt-get install -y git python3-pip python3-venv
 
-# Download latest runner
-curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
-echo "5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7  actions-runner-linux-x64-2.331.0.tar.gz" | shasum -a 256 -c
-tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
-
-# Create config script that will be triggered via GitHub Actions
-cat > /tmp/configure-runner.sh <<'EOF'
-
-#!/bin/bash
-cd /home/ubuntu/actions-runner
-# Run config with token from environment
-sudo ./config.sh --url https://github.com/kaziiriad/flatris --token $RUNNER_TOKEN
-sudo ./run.sh
-EOF
-
-chmod +x /tmp/configure-runner.sh
-chown -R ubuntu:ubuntu /home/ubuntu/actions-runner
-
-echo "GitHub runner instance ready!"
-echo "Runner will be configured via GitHub Actions workflow"
+echo "Runner instance prerequisites installed!"
 """
 
 # EC2 Instance for Flatris App
