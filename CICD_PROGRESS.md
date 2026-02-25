@@ -12,12 +12,12 @@ Deploying Flatris (multiplayer Tetris game) to AWS using free tier services.
 ## Deployment Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│   GitHub Repo   │────▶│ GitHub Actions  │────▶│   AWS EC2        │
-│                 │     │   (CI/CD)       │     │   (t2.micro)     │
-└─────────────────┘     └─────────────────┘     └──────────────────┘
-                                                        │
-                              Playable URL ◀───────────┘
+┌─────────────────┐     ┌─────────────────────┐     ┌──────────────────┐
+│   GitHub Repo   │────▶│ GitHub Actions      │────▶│   AWS EC2        │
+│                 │     │ (Self-hosted Runner) │     │   (t2.micro)     │
+└─────────────────┘     └─────────────────────┘     └──────────────────┘
+                                                            │
+                                    Playable URL ◀───────────┘
 ```
 
 ---
@@ -49,14 +49,15 @@ Deploying Flatris (multiplayer Tetris game) to AWS using free tier services.
 - [ ] Configure GitHub secrets for AWS credentials
 - [ ] Test CI/CD pipeline
 
-### 📋 Phase 4: AWS Infrastructure (Pending)
-- [ ] Create Terraform configuration
-  - [ ] `main.tf` - EC2, VPC, Security Groups
-  - [ ] `variables.tf` - Input variables
-  - [ ] `outputs.tf` - IP address, DNS
-- [ ] Configure security groups (ports 22, 80, 443)
-- [ ] Set up Elastic IP (optional)
-- [ ] Deploy infrastructure
+### ✅ Phase 4: AWS Infrastructure (Complete)
+- [x] Create Pulumi configuration (Python runtime)
+  - [x] `infra/__main__.py` - EC2, VPC, Security Groups, GitHub Runner
+  - [x] `infra/Pulumi.yaml` - Project configuration
+  - [x] `infra/requirements.txt` - Python dependencies
+  - [x] `infra/README.md` - Infrastructure documentation
+- [x] Configure security groups (ports 22, 80, 443, 3000)
+- [x] Set up GitHub Actions runner instance
+- [ ] Deploy infrastructure with `pulumi up`
 
 ### 📋 Phase 5: Final Deployment (Pending)
 - [ ] Deploy application to EC2
@@ -75,6 +76,10 @@ Deploying Flatris (multiplayer Tetris game) to AWS using free tier services.
 | `docker-compose.yml` | Local development setup | ✅ Complete |
 | `nginx/nginx.conf` | Reverse proxy + WebSocket | ✅ Complete |
 | `.env.example` | Environment template | ✅ Complete |
+| `infra/__main__.py` | Pulumi infrastructure code | ✅ Complete |
+| `infra/Pulumi.yaml` | Pulumi project config | ✅ Complete |
+| `infra/requirements.txt` | Python dependencies | ✅ Complete |
+| `infra/README.md` | Infrastructure documentation | ✅ Complete |
 | `CICD_PROGRESS.md` | This file | ✅ Active |
 
 ---
@@ -107,6 +112,32 @@ git checkout master
 git merge feature-name
 ```
 
+### Pulumi Infrastructure
+```bash
+cd infra
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure stack
+pulumi config set aws:region us-east-1
+pulumi config set your_ip YOUR_IP/32
+
+# Preview changes
+pulumi preview
+
+# Deploy infrastructure
+pulumi up
+
+# Get outputs
+pulumi stack output flatris_url
+pulumi stack output ssh_to_flatris
+pulumi stack output ssh_to_runner
+
+# Destroy infrastructure
+pulumi destroy
+```
+
 ---
 
 ## Environment Variables
@@ -123,10 +154,10 @@ PORT=3000
 ## Next Steps
 
 1. **Create GitHub Actions workflow** - `.github/workflows/deploy.yml`
-2. **Set up Docker registry** - Docker Hub or AWS ECR
-3. **Write Terraform configs** - Provision AWS infrastructure
-4. **Configure deployment script** - SSH + Docker Compose on EC2
-5. **Test end-to-end** - Deploy and verify game works
+2. **Deploy Pulumi infrastructure** - `cd infra && pulumi up`
+3. **Configure GitHub Runner** - Set up self-hosted runner on EC2
+4. **Deploy application** - SSH + Docker Compose on Flatris EC2
+5. **Test end-to-end** - Verify game works at public URL
 
 ---
 
@@ -136,7 +167,13 @@ PORT=3000
 - **Image Size**: ~1GB (includes all node_modules)
 - **Health Check**: HTTP GET /favicon.ico
 - **WebSocket**: Supported via Socket.io
-- **Free Tier**: EC2 t2.micro (750 hrs/month)
+- **Infrastructure**: Pulumi (Python runtime)
+- **Instances**: 2x t2.micro (Flatris App + GitHub Runner)
+- **Free Tier Warning**: 2 instances = ~1500 hrs/month (exceeds 750 free tier)
+
+---
+
+*Last Updated: 2025-02-25*
 
 ---
 
