@@ -38,6 +38,11 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: pulumi login
 
+      - name: Select Pulumi stack
+        run: |
+          cd infra
+          pulumi stack select dev
+
       - name: Deploy infrastructure with Pulumi
         run: |
           cd infra
