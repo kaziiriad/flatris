@@ -1,0 +1,96 @@
+name: Deploy Flatris Application
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ansible/**
+      - docker-compose.yml
+      - Dockerfile
+      - server/**
+      - web/**
+      - shared/**
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws
+          echo "[default]" > ~/.aws/credentials
+          echo "aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}" >> ~/.aws/credentials
+          echo "aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> ~/.aws/credentials
+          echo "[default]" > ~/.aws/config
+          echo "region = ap-southeast-1" >> ~/.aws/config
+          chmod 600 ~/.aws/credentials ~/.aws/config
+
+      - name: Get Pulumi outputs
+        id: pulumi-outputs
+        run: |
+          cd infra
+          uv sync
+          # Get app IPs from Pulumi stack outputs
+          APP_PRIVATE_IP=$(pulumi stack output flatris_app_private_ip)
+          APP_PUBLIC_IP=$(pulumi stack output flatris_app_public_ip)
+
+          echo "app_private_ip=$APP_PRIVATE_IP" >> $GITHUB_ENV
+          echo "app_public_ip=$APP_PUBLIC_IP" >> $GITHUB_ENV
+          echo "App Private IP: $APP_PRIVATE_IP"
+          echo "App Public IP: $APP_PUBLIC_IP"
+
+      - name: Wait for app instance to be ready
+        run: |
+          APP_PRIVATE_IP="${{ env.APP_PRIVATE_IP }}"
+          echo "Waiting for app at $APP_PRIVATE_IP to be ready..."
+
+          for i in {1..30}; do
+            if ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$APP_PRIVATE_IP "echo ready" 2>/dev/null; then
+              echo "App instance is ready!"
+              break
+            fi
+            echo "Attempt $i: App not ready yet, waiting 10 seconds..."
+            sleep 10
+          done
+
+      - name: Install Ansible collections
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y python3-pip
+          pip3 install ansible-core
+          cd ansible
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Deploy to Flatris App using Ansible
+        run: |
+          cd ansible
+          ansible-playbook -i hosts.ini deploy_flatris.yml -v
+
+      - name: Health check
+        run: |
+          APP_PRIVATE_IP="${{ env.APP_PRIVATE_IP }}"
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$APP_PRIVATE_IP \
+            "curl -f http://localhost:3000/favicon.ico"
+
+      - name: Get deployment URL
+        id: deployment-url
+        run: |
+          cd infra
+          URL=$(pulumi stack output flatris_url)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployment URL: $URL"
+
+      - name: Display deployment info
+        run: |
+          echo "==================================="
+          echo "Deployment Complete!"
+          echo "==================================="
+          echo "Flatris URL: ${{ steps.deployment-url.outputs.url }}"
+          echo "App Public IP: ${{ env.APP_PUBLIC_IP }}"
+          echo "==================================="

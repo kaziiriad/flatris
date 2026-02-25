@@ -1,16 +1,10 @@
-name: Deploy Flatris to AWS
+name: Configure Self-Hosted Runner
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
 
-env:
-  AWS_REGION: ap-southeast-1
-
 jobs:
-  deploy:
+  configure-runner:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +18,7 @@ jobs:
           echo "aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}" >> ~/.aws/credentials
           echo "aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> ~/.aws/credentials
           echo "[default]" > ~/.aws/config
-          echo "region = ${{ env.AWS_REGION }}" >> ~/.aws/config
+          echo "region = ap-southeast-1" >> ~/.aws/config
           chmod 600 ~/.aws/credentials ~/.aws/config
 
       - name: Setup SSH key
@@ -39,28 +33,14 @@ jobs:
           curl -fsSL https://get.pulumi.com | sh
           echo "$PATH" >> $GITHUB_PATH
 
-      - name: Get Pulumi outputs
+      - name: Get Runner IP from Pulumi
         id: pulumi-outputs
         run: |
           cd infra
           uv sync
-          # Get runner and app IPs from Pulumi stack outputs
           RUNNER_IP=$(pulumi stack output runner_public_ip)
-          APP_PRIVATE_IP=$(pulumi stack output flatris_app_private_ip)
-
           echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
-          echo "app_private_ip=$APP_PRIVATE_IP" >> $GITHUB_OUTPUT
           echo "Runner IP: $RUNNER_IP"
-          echo "App Private IP: $APP_PRIVATE_IP"
-
-      - name: Setup Ansible
-        run: |
-          pip3 install ansible-core
-
-      - name: Install Ansible collections
-        run: |
-          cd ansible
-          ansible-galaxy collection install -r requirements.yml
 
       - name: Wait for runner to be ready
         run: |
@@ -76,7 +56,7 @@ jobs:
             sleep 10
           done
 
-      - name: Configure GitHub Runner
+      - name: Configure GitHub Actions Runner
         run: |
           RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
 
@@ -87,42 +67,21 @@ jobs:
               sudo ./config.sh \
                 --url https://github.com/kaziiriad/flatris \
                 --token ${{ secrets.RUNNER_TOKEN }} \
-                --name flatris-runner-$(hostname) \
+                --name flatris-runner \
                 --labels self-hosted,aws,ap-southeast-1
               sudo ./svc.sh install ubuntu
               sudo ./svc.sh start
               echo "Runner configured and started!"
             else
-              echo "Runner already configured"
+              echo "Runner already configured, restarting..."
+              sudo ./svc.sh stop
+              sudo ./svc.sh start
+              echo "Runner restarted!"
             fi
           ENDSSH
 
-      - name: Deploy to Flatris App using Ansible
+      - name: Verify runner status
         run: |
-          cd ansible
-          export FLATRIS_APP_IP="${{ steps.pulumi-outputs.outputs.app_private_ip }}"
-          ansible-playbook -i hosts.ini deploy_flatris.yml -v
-
-      - name: Health check via Ansible
-        run: |
-          cd ansible
-          export FLATRIS_APP_IP="${{ steps.pulumi-outputs.outputs.app_private_ip }}"
-          ansible flatris_app -i hosts.ini -m uri -a "url=http://localhost:3000/favicon.ico status_code=200" --wait-for-response
-
-      - name: Get deployment URL
-        id: deployment-url
-        run: |
-          cd infra
-          URL=$(pulumi stack output flatris_url)
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Deployment URL: $URL"
-
-      - name: Comment deployment info
-        run: |
-          echo "==================================="
-          echo "Deployment Complete!"
-          echo "==================================="
-          echo "Flatris URL: ${{ steps.deployment-url.outputs.url }}"
-          echo "Runner IP: ${{ steps.pulumi-outputs.outputs.runner_ip }}"
-          echo "App IP (private): ${{ steps.pulumi-outputs.outputs.app_private_ip }}"
-          echo "==================================="
+          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP \
+            "sudo ./actions-runner/svc.sh status" || true
