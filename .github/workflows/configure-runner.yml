@@ -94,10 +94,21 @@ jobs:
             rm -f actions-runner-linux-x64-2.331.0.tar.gz
 
             ./config.sh \
+              --unattended
               --url https://github.com/kaziiriad/flatris \
               --token ${{ secrets.RUNNER_TOKEN }}
+              --name flatris
 
-            sudo ./run.sh
-            
+            ./run.sh
+
           EOF
 
+      - name: SSH into Runner instance and install Ansible
+        run: |
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.pulumi-outputs.outputs.runner_ip }} << EOF
+          sudo apt-get update -y
+          sudo apt install software-properties-common -y
+          sudo apt-add-repository --yes --update ppa:ansible/ansible
+          sudo apt-get install -y ansible
+          ansible --version
+          EOF
