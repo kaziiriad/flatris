@@ -55,6 +55,12 @@ jobs:
           echo "region = ap-southeast-1" >> ~/.aws/config
           chmod 600 ~/.aws/credentials ~/.aws/config
 
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/flatris-keypair.pem
+          chmod 400 ~/.ssh/flatris-keypair.pem
+
       - name: Setup Pulumi
         run: |
           curl -fsSL https://get.pulumi.com | sh
