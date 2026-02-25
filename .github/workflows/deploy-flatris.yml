@@ -55,6 +55,21 @@ jobs:
           echo "region = ap-southeast-1" >> ~/.aws/config
           chmod 600 ~/.aws/credentials ~/.aws/config
 
+      - name: Setup Pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$PATH" >> $GITHUB_PATH
+
+      - name: Setup uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Pulumi login
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: pulumi login
+
       - name: Get Pulumi outputs
         id: pulumi-outputs
         run: |
