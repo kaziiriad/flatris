@@ -178,18 +178,18 @@ mkdir -p actions-runner
 cd actions-runner
 
 # Download latest runner
-curl -o actions-runner-linux-x64-2.317.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.317.0/actions-runner-linux-x64-2.317.0.tar.gz
-tar xzf ./actions-runner-linux-x64-2.317.0.tar.gz
-rm -f actions-runner-linux-x64-2.317.0.tar.gz
+curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
+echo "5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7  actions-runner-linux-x64-2.331.0.tar.gz" | shasum -a 256 -c
+tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
 
 # Create config script that will be triggered via GitHub Actions
 cat > /tmp/configure-runner.sh <<'EOF'
+
 #!/bin/bash
 cd /home/ubuntu/actions-runner
 # Run config with token from environment
 sudo ./config.sh --url https://github.com/kaziiriad/flatris --token $RUNNER_TOKEN
-sudo ./svc.sh install ubuntu
-sudo ./svc.sh start
+sudo ./run.sh
 EOF
 
 chmod +x /tmp/configure-runner.sh
