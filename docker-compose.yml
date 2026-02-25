@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  flatris:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flatris-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Uncomment and add Firebase service account if needed
+      # - FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}
+      # - ROLLBAR_POST_SERVER_ITEM_ACCESS_TOKEN=your_token
+      # - ROLLBAR_POST_CLIENT_ITEM_ACCESS_TOKEN=your_token
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/favicon.ico', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - flatris-network
+
+  # Optional: Nginx reverse proxy for SSL/HTTPS
+  nginx:
+    image: nginx:alpine
+    container_name: flatris-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - flatris
+    restart: unless-stopped
+    networks:
+      - flatris-network
+    profiles:
+      - with-nginx
+
+networks:
+  flatris-network:
+    driver: bridge

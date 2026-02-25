@@ -1,0 +1,61 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build output
+.next
+out
+dist
+build
+
+# Git
+.git
+.gitignore
+
+# CI/CD
+.github
+.travis.yml
+azure-pipelines.yml
+now.json
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+*.log
+.env
+.env.local
+.env.*.local
+
+# Media files (large)
+flatris.gif
+flatris.png
+
+# Documentation
+README.md
+TODO.md
+multiplayer.md
+LICENSE
+
+# Flow
+.flowconfig
+flow-typed
+
+# Misc files
+.eslintignore
+.eslintrc.js
+.prettierrc
+.prettierignore
