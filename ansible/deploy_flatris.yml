@@ -42,7 +42,7 @@
 
     - name: Copy repository files to Flatris instance
       synchronize:
-        src: ../
+        src: /home/ubuntu/flatris/
         dest: "{{ repo_dir }}/"
         delete: yes
         recursive: yes
