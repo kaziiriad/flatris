@@ -73,7 +73,7 @@ jobs:
 
       - name: SSH into Runner EC2 and install Git Runner
         run: |
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.pulumi-outputs.outputs.runner_ip }} << 'EOF'
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.pulumi-outputs.outputs.runner_ip }} << EOF
             set -e
 
             # Stop and remove old runner if exists
