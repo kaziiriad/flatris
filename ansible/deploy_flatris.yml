@@ -1,0 +1,92 @@
+---
+- name: Deploy Flatris Application
+  hosts: flatris_app
+  become: yes
+  gather_facts: yes
+
+  vars:
+    flatris_dir: /home/ubuntu/flatris
+    repo_dir: /home/ubuntu/flatris-repo
+
+  tasks:
+    - name: Wait for Docker to be available
+      wait_for:
+        path: /var/run/docker.sock
+        state: present
+        timeout: 300
+      poll: 5
+
+    - name: Check Docker is ready
+      command: docker ps
+      register: docker_ready
+      until: docker_ready.rc == 0
+      retries: 20
+      delay: 5
+      changed_when: false
+
+    - name: Create Flatris directory
+      file:
+        path: "{{ flatris_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Create repo directory
+      file:
+        path: "{{ repo_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy repository files to Flatris instance
+      synchronize:
+        src: ../
+        dest: "{{ repo_dir }}/"
+        delete: yes
+        recursive: yes
+      delegate_to: localhost
+
+    - name: Stop existing containers if running
+      community.docker.docker_compose:
+        project_src: "{{ repo_dir }}"
+        state: absent
+        profiles:
+          - without-nginx
+      ignore_errors: yes
+
+    - name: Build and start Flatris with docker-compose
+      community.docker.docker_compose:
+        project_src: "{{ repo_dir }}"
+        state: present
+        build: yes
+        profiles:
+          - without-nginx
+      register: compose_result
+
+    - name: Wait for Flatris to be healthy
+      uri:
+        url: http://localhost:3000/favicon.ico
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Get container status
+      community.docker.docker_compose:
+        project_src: "{{ repo_dir }}"
+        state: present
+        profiles:
+          - without-nginx
+      register: compose_status
+
+    - name: Display deployment status
+      debug:
+        msg: |
+          Flatris deployment successful!
+          Container: flatris-app
+          URL: http://{{ ansible_default_ipv4.address }}:3000
+          Private IP: {{ ansible_default_ipv4.address }}

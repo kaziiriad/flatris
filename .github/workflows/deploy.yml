@@ -1,0 +1,128 @@
+name: Deploy Flatris to AWS
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws
+          echo "[default]" > ~/.aws/credentials
+          echo "aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}" >> ~/.aws/credentials
+          echo "aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> ~/.aws/credentials
+          echo "[default]" > ~/.aws/config
+          echo "region = ${{ env.AWS_REGION }}" >> ~/.aws/config
+          chmod 600 ~/.aws/credentials ~/.aws/config
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/flatris-keypair.pem
+          chmod 400 ~/.ssh/flatris-keypair.pem
+          ssh-keygen -y -f ~/.ssh/flatris-keypair.pem > ~/.ssh/flatris-keypair.pem.pub
+
+      - name: Setup Pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$PATH" >> $GITHUB_PATH
+
+      - name: Get Pulumi outputs
+        id: pulumi-outputs
+        run: |
+          cd infra
+          uv sync
+          # Get runner and app IPs from Pulumi stack outputs
+          RUNNER_IP=$(pulumi stack output runner_public_ip)
+          APP_PRIVATE_IP=$(pulumi stack output flatris_app_private_ip)
+
+          echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
+          echo "app_private_ip=$APP_PRIVATE_IP" >> $GITHUB_OUTPUT
+          echo "Runner IP: $RUNNER_IP"
+          echo "App Private IP: $APP_PRIVATE_IP"
+
+      - name: Setup Ansible
+        run: |
+          pip3 install ansible-core
+
+      - name: Install Ansible collections
+        run: |
+          cd ansible
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Wait for runner to be ready
+        run: |
+          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
+          echo "Waiting for runner at $RUNNER_IP to be ready..."
+
+          for i in {1..30}; do
+            if ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$RUNNER_IP "echo ready" 2>/dev/null; then
+              echo "Runner is ready!"
+              break
+            fi
+            echo "Attempt $i: Runner not ready yet, waiting 10 seconds..."
+            sleep 10
+          done
+
+      - name: Configure GitHub Runner
+        run: |
+          RUNNER_IP="${{ steps.pulumi-outputs.outputs.runner_ip }}"
+
+          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$RUNNER_IP << 'ENDSSH'
+            cd /home/ubuntu/actions-runner
+            if [ ! -f .runner ]; then
+              echo "Configuring GitHub Actions runner..."
+              sudo ./config.sh \
+                --url https://github.com/kaziiriad/flatris \
+                --token ${{ secrets.RUNNER_TOKEN }} \
+                --name flatris-runner-$(hostname) \
+                --labels self-hosted,aws,ap-southeast-1
+              sudo ./svc.sh install ubuntu
+              sudo ./svc.sh start
+              echo "Runner configured and started!"
+            else
+              echo "Runner already configured"
+            fi
+          ENDSSH
+
+      - name: Deploy to Flatris App using Ansible
+        run: |
+          cd ansible
+          export FLATRIS_APP_IP="${{ steps.pulumi-outputs.outputs.app_private_ip }}"
+          ansible-playbook -i hosts.ini deploy_flatris.yml -v
+
+      - name: Health check via Ansible
+        run: |
+          cd ansible
+          export FLATRIS_APP_IP="${{ steps.pulumi-outputs.outputs.app_private_ip }}"
+          ansible flatris_app -i hosts.ini -m uri -a "url=http://localhost:3000/favicon.ico status_code=200" --wait-for-response
+
+      - name: Get deployment URL
+        id: deployment-url
+        run: |
+          cd infra
+          URL=$(pulumi stack output flatris_url)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployment URL: $URL"
+
+      - name: Comment deployment info
+        run: |
+          echo "==================================="
+          echo "Deployment Complete!"
+          echo "==================================="
+          echo "Flatris URL: ${{ steps.deployment-url.outputs.url }}"
+          echo "Runner IP: ${{ steps.pulumi-outputs.outputs.runner_ip }}"
+          echo "App IP (private): ${{ steps.pulumi-outputs.outputs.app_private_ip }}"
+          echo "==================================="

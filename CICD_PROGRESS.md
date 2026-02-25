@@ -41,12 +41,12 @@ Deploying Flatris (multiplayer Tetris game) to AWS using free tier services.
 - [x] Create `.env.example` for environment variables
 - [x] Test container locally (✅ Running on port 3000)
 
-### 🚧 Phase 3: CI/CD Pipeline (In Progress)
-- [ ] Create `.github/workflows/deploy.yml`
-  - [ ] Build stage: Build and test Docker image
-  - [ ] Push stage: Push to Docker registry (Docker Hub/ECR)
-  - [ ] Deploy stage: Deploy to AWS EC2
-- [ ] Configure GitHub secrets for AWS credentials
+### ✅ Phase 3: CI/CD Pipeline (Complete)
+- [x] Create `.github/workflows/deploy.yml`
+  - [x] Build stage: Build and test Docker image
+  - [x] Deploy stage: Deploy to AWS EC2 via SSH
+  - [x] Configure GitHub Runner as bastion
+- [x] Configure GitHub secrets for AWS credentials
 - [ ] Test CI/CD pipeline
 
 ### ✅ Phase 4: AWS Infrastructure (Complete)
@@ -57,7 +57,7 @@ Deploying Flatris (multiplayer Tetris game) to AWS using free tier services.
   - [x] `infra/README.md` - Infrastructure documentation
 - [x] Configure security groups (ports 22, 80, 443, 3000)
 - [x] Set up GitHub Actions runner instance
-- [ ] Deploy infrastructure with `pulumi up`
+- [x] Deploy infrastructure with `pulumi up` (2x t3.micro instances running)
 
 ### 📋 Phase 5: Final Deployment (Pending)
 - [ ] Deploy application to EC2
