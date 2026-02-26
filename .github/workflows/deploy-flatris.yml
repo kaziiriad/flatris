@@ -64,9 +64,25 @@ jobs:
 
       - name: Setup SSH key
         run: |
+          # Setup .ssh directory with correct permissions
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/flatris-keypair.pem
+          chmod 700 ~/.ssh
+
+          # Remove any existing key with sudo if needed
+          sudo rm -f ~/.ssh/flatris-keypair.pem 2>/dev/null || rm -f ~/.ssh/flatris-keypair.pem
+
+          # Write key without echo
+          cat > ~/.ssh/flatris-keypair.pem << 'KEY_EOF'
+          ${{ secrets.SSH_PRIVATE_KEY }}
+          KEY_EOF
+
+          # Set correct permissions
           chmod 400 ~/.ssh/flatris-keypair.pem
+
+          # Fix ownership if needed (for self-hosted runner)
+          sudo chown $USER:$USER ~/.ssh/flatris-keypair.pem 2>/dev/null || true
+
+          echo "SSH key setup complete"
 
       - name: Setup Pulumi
         run: |
