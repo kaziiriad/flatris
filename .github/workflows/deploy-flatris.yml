@@ -103,29 +103,49 @@ jobs:
           cd infra
           export PATH=$PATH:$HOME/.pulumi/bin:$HOME/.cargo/bin
           uv sync
-          # Get app IPs from Pulumi stack outputs
+          # Get IPs from Pulumi stack outputs
           APP_PRIVATE_IP=$(pulumi stack output flatris_app_private_ip)
           APP_PUBLIC_IP=$(pulumi stack output flatris_app_public_ip)
+          RUNNER_PUBLIC_IP=$(pulumi stack output runner_public_ip)
 
           echo "app_private_ip=$APP_PRIVATE_IP" >> $GITHUB_ENV
           echo "app_public_ip=$APP_PUBLIC_IP" >> $GITHUB_ENV
+          echo "runner_public_ip=$RUNNER_PUBLIC_IP" >> $GITHUB_ENV
           echo "App Private IP: $APP_PRIVATE_IP"
           echo "App Public IP: $APP_PUBLIC_IP"
+          echo "Runner Public IP: $RUNNER_PUBLIC_IP"
+
+      - name: Configure SSH proxy through bastion
+        run: |
+          # Create SSH config for bastion proxy
+          cat >> ~/.ssh/config << 'EOF'
+          Host flatris-bastion
+            HostName ${{ env.runner_public_ip }}
+            User ubuntu
+            IdentityFile ~/.ssh/flatris-keypair.pem
+            StrictHostKeyChecking no
+
+          Host flatris-app
+            HostName ${{ env.app_private_ip }}
+            User ubuntu
+            IdentityFile ~/.ssh/flatris-keypair.pem
+            StrictHostKeyChecking no
+            ProxyJump flatris-bastion
+          EOF
 
       - name: Wait for app instance to be ready
         run: |
-          APP_PUBLIC_IP="${{ env.app_public_ip }}"
-          echo "Waiting for app at $APP_PUBLIC_IP to be ready..."
+          echo "Waiting for app at ${{ env.app_private_ip }} to be ready (via bastion)..."
 
           for i in {1..30}; do
-            if ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$APP_PUBLIC_IP "echo ready" 2>/dev/null; then
+            if ssh flatris-app "echo ready" 2>/dev/null; then
               echo "App instance is ready!"
               exit 0
             fi
             echo "Attempt $i: App not ready yet, waiting 10 seconds..."
             sleep 10
           done
-          
+
           echo "App instance failed to become ready"
           exit 1
 
@@ -146,14 +166,14 @@ jobs:
 
       - name: Deploy to Flatris App using Ansible
         run: |
+          export FLATRIS_APP_IP="${{ env.app_private_ip }}"
+          export RUNNER_PUBLIC_IP="${{ env.runner_public_ip }}"
           cd ansible
           ansible-playbook -i hosts.ini deploy_flatris.yml -v
 
       - name: Health check
         run: |
-          APP_PUBLIC_IP="${{ env.app_public_ip }}"
-          ssh -i ~/.ssh/flatris-keypair.pem -o StrictHostKeyChecking=no ubuntu@$APP_PUBLIC_IP \
-            "curl -f http://localhost:3000/favicon.ico"
+          ssh flatris-app "curl -f http://localhost:3000/favicon.ico"
 
       - name: Get deployment URL
         id: deployment-url
