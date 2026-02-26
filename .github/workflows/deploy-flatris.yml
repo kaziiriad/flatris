@@ -149,21 +149,58 @@ jobs:
           echo "App instance failed to become ready"
           exit 1
 
-      - name: Install Ansible collections
+      - name: Deploy to Flatris App
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y python3-pip git
-          pip3 install ansible-core
-          cd ansible
-          ansible-galaxy collection install -r requirements.yml
+          # Create deployment script
+          cat > /tmp/deploy.sh << 'EOF'
+          #!/bin/bash
+          set -e
 
-      - name: Deploy to Flatris App using Ansible
-        run: |
-          export FLATRIS_APP_IP="${{ env.app_private_ip }}"
-          export RUNNER_PUBLIC_IP="${{ env.runner_public_ip }}"
-          export REPO_DIR="${{ github.workspace }}"
-          cd ansible
-          ansible-playbook -i hosts.ini deploy_flatris.yml -v
+          # Wait for Docker
+          echo "Waiting for Docker..."
+          until docker ps >/dev/null 2>&1; do sleep 2; done
+
+          # Create flatris directory
+          sudo mkdir -p /home/ubuntu/flatris-repo
+          sudo chown -R ubuntu:ubuntu /home/ubuntu/flatris-repo
+
+          # Copy files via rsync
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.next' \
+            /tmp/flatris/ /home/ubuntu/flatris-repo/
+
+          # Stop existing containers
+          cd /home/ubuntu/flatris-repo
+          docker-compose -f docker-compose.yml --profile without-nginx down 2>/dev/null || true
+
+          # Build and start
+          docker-compose -f docker-compose.yml --profile without-nginx up -d --build
+
+          # Wait for health
+          echo "Waiting for Flatris to be healthy..."
+          for i in {1..30}; do
+            if curl -f http://localhost:3000/favicon.ico >/dev/null 2>&1; then
+              echo "Flatris is healthy!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Flatris failed health check"
+          exit 1
+          EOF
+
+          chmod +x /tmp/deploy.sh
+
+          # Copy repo to temp location on remote
+          ssh flatris-app "rm -rf /tmp/flatris"
+          ssh flatris-app "mkdir -p /tmp/flatris"
+          rsync -av --exclude='.git' --exclude='node_modules' \
+            ${{ github.workspace }}/ flatris-app:/tmp/flatris/
+
+          # Run deployment script on remote
+          ssh flatris-app 'bash /tmp/deploy.sh'
 
       - name: Health check
         run: |
