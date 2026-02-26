@@ -157,17 +157,11 @@ jobs:
           cd ansible
           ansible-galaxy collection install -r requirements.yml
 
-      - name: Clone repository on runner
-        run: |
-          rm -rf /home/ubuntu/flatris
-          git clone https://github.com/kaziiriad/flatris.git /home/ubuntu/flatris
-          cd /home/ubuntu/flatris
-          git log -1
-
       - name: Deploy to Flatris App using Ansible
         run: |
           export FLATRIS_APP_IP="${{ env.app_private_ip }}"
           export RUNNER_PUBLIC_IP="${{ env.runner_public_ip }}"
+          export REPO_DIR="${{ github.workspace }}"
           cd ansible
           ansible-playbook -i hosts.ini deploy_flatris.yml -v
 

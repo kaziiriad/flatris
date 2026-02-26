@@ -7,6 +7,7 @@
   vars:
     flatris_dir: /home/ubuntu/flatris
     repo_dir: /home/ubuntu/flatris-repo
+    local_repo_dir: "{{ lookup('env', 'REPO_DIR') | default('/home/ubuntu/flatris', true) }}"
 
   tasks:
     - name: Wait for Docker to be available
@@ -42,7 +43,7 @@
 
     - name: Copy repository files to Flatris instance
       synchronize:
-        src: /home/ubuntu/flatris/
+        src: "{{ local_repo_dir }}/"
         dest: "{{ repo_dir }}/"
         delete: yes
         recursive: yes
