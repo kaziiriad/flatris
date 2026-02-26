@@ -151,9 +151,6 @@ usermod -aG docker ubuntu
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
-# Install Nginx
-apt-get install -y nginx
-
 # Create app directory
 mkdir -p /home/ubuntu/flatris
 chown -R ubuntu:ubuntu /home/ubuntu/flatris
