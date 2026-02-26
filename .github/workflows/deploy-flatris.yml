@@ -197,7 +197,7 @@ jobs:
             # Wait for health
             echo "Waiting for Flatris to be healthy..."
             for i in {1..30}; do
-              if curl -f http://localhost:3000/favicon.ico >/dev/null 2>&1; then
+              if curl -f http://localhost:3000/ >/dev/null 2>&1; then
                 echo "Flatris is healthy!"
                 exit 0
               fi
@@ -210,7 +210,7 @@ jobs:
 
       - name: Health check
         run: |
-          ssh flatris-app "curl -f http://localhost:3000/favicon.ico"
+          ssh flatris-app "curl -f http://localhost:3000/"
 
       - name: Get deployment URL
         id: deployment-url
