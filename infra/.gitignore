@@ -27,4 +27,4 @@ Thumbs.db
 *~
 
 # Ansible (if using)
-*.retry
+*.retry.venv/

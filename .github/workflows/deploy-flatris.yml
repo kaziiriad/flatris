@@ -45,7 +45,7 @@ jobs:
         run: yarn test
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: test
 
     steps:
@@ -151,56 +151,46 @@ jobs:
 
       - name: Deploy to Flatris App
         run: |
-          # Create deployment script
-          cat > /tmp/deploy.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          # Wait for Docker
-          echo "Waiting for Docker..."
-          until docker ps >/dev/null 2>&1; do sleep 2; done
-
-          # Create flatris directory
-          sudo mkdir -p /home/ubuntu/flatris-repo
-          sudo chown -R ubuntu:ubuntu /home/ubuntu/flatris-repo
-
-          # Copy files via rsync
+          # Copy repo to remote server
+          echo "Copying files to remote server..."
+          ssh flatris-app "rm -rf /home/ubuntu/flatris-repo"
+          ssh flatris-app "mkdir -p /home/ubuntu/flatris-repo"
           rsync -av --delete \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='.next' \
-            /tmp/flatris/ /home/ubuntu/flatris-repo/
+            --exclude='.github' \
+            --exclude='infra' \
+            --exclude='ansible' \
+            ${{ github.workspace }}/ flatris-app:/home/ubuntu/flatris-repo/
 
-          # Stop existing containers
-          cd /home/ubuntu/flatris-repo
-          docker-compose -f docker-compose.yml --profile without-nginx down 2>/dev/null || true
+          # Deploy on remote server
+          echo "Deploying Flatris..."
+          ssh flatris-app bash << 'ENDSSH'
+            set -e
+            cd /home/ubuntu/flatris-repo
 
-          # Build and start
-          docker-compose -f docker-compose.yml --profile without-nginx up -d --build
+            # Stop existing containers
+            echo "Stopping existing containers..."
+            docker-compose -f docker-compose.yml --profile without-nginx down 2>/dev/null || true
 
-          # Wait for health
-          echo "Waiting for Flatris to be healthy..."
-          for i in {1..30}; do
-            if curl -f http://localhost:3000/favicon.ico >/dev/null 2>&1; then
-              echo "Flatris is healthy!"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Flatris failed health check"
-          exit 1
-          EOF
+            # Build and start
+            echo "Building and starting Flatris..."
+            docker-compose -f docker-compose.yml --profile without-nginx up -d --build
 
-          chmod +x /tmp/deploy.sh
-
-          # Copy repo to temp location on remote
-          ssh flatris-app "rm -rf /tmp/flatris"
-          ssh flatris-app "mkdir -p /tmp/flatris"
-          rsync -av --exclude='.git' --exclude='node_modules' \
-            ${{ github.workspace }}/ flatris-app:/tmp/flatris/
-
-          # Run deployment script on remote
-          ssh flatris-app 'bash /tmp/deploy.sh'
+            # Wait for health
+            echo "Waiting for Flatris to be healthy..."
+            for i in {1..30}; do
+              if curl -f http://localhost:3000/favicon.ico >/dev/null 2>&1; then
+                echo "Flatris is healthy!"
+                exit 0
+              fi
+              echo "Attempt $i: not ready yet..."
+              sleep 5
+            done
+            echo "Flatris failed health check"
+            exit 1
+          ENDSSH
 
       - name: Health check
         run: |
