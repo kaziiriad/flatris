@@ -186,13 +186,16 @@ jobs:
             set -e
             cd /home/ubuntu/flatris-repo
 
-            # Stop existing containers
-            echo "Stopping existing containers..."
-            docker-compose -f docker-compose.yml --profile without-nginx down 2>/dev/null || true
+            # Stop ALL containers first
+            echo "Stopping all containers..."
+            docker-compose -f docker-compose.yml down 2>/dev/null || true
 
-            # Build and start
+            # Remove any orphaned containers
+            docker rm -f flatris-nginx flatris-app 2>/dev/null || true
+
+            # Build and start only flatris (no nginx)
             echo "Building and starting Flatris..."
-            docker-compose -f docker-compose.yml --profile without-nginx up -d --build
+            docker-compose -f docker-compose.yml up -d --build flatris
 
             # Wait for health
             echo "Waiting for Flatris to be healthy..."
