@@ -12,37 +12,91 @@ Deploying Flatris (multiplayer Tetris game) to AWS free tier using GitHub Action
 
 ## Deployment Architecture
 
+```mermaid
+graph TB
+    Dev[Developer<br/>git push master] --> GH[GitHub Repository]
+
+    GH --> |infra/** changes| InfraWorkflow[deploy-infra.yml<br/>ubuntu-latest]
+    GH --> |app code changes| TestWorkflow[deploy-flatris.yml<br/>Test Job]
+
+    InfraWorkflow --> Pulumi[Pulumi CLI<br/>pulumi up]
+    Pulumi --> AWS[AWS Resources]
+
+    AWS --> VPC[VPC]
+    AWS --> IGW[Internet Gateway]
+    AWS --> SG[Security Groups]
+    AWS --> EC2[EC2 Instances]
+
+    EC2 --> Runner[Runner EC2<br/>t3.micro<br/>Public IP<br/>Bastion]
+    EC2 --> App[App EC2<br/>t3.micro<br/>Private IP<br/>Flatris App]
+
+    TestWorkflow --> |tests pass| DeployJob[Deploy Job<br/>self-hosted runner]
+    TestWorkflow --> |tests fail| Fail[❌ Pipeline Fails]
+
+    DeployJob --> SSH[SSH Connection<br/>ProxyJump via Runner]
+    Runner --> |bastion| SSH
+    SSH --> App
+
+    App --> Docker[Docker Compose<br/>up -d --build]
+    Docker --> Container[Flatris Container<br/>Port 3000]
+
+    Container --> Health[Health Check<br/>curl /]
+    Health --> |pass| URL[✅ Playable URL<br/>http://app-ip:3000]
+    Health --> |fail| Fail
+
+    style Dev fill:#e1f5fe
+    style GH fill:#fff3e0
+    style TestWorkflow fill:#e8f5e9
+    style DeployJob fill:#fff3e0
+    style Runner fill:#fce4ec
+    style App fill:#e8f5e9
+    style URL fill:#c8e6c9
+    style Fail fill:#ffcdd2
 ```
-┌──────────────────┐     ┌──────────────────────────────────────┐
-│   GitHub Push    │────▶│  GitHub Actions CI/CD                │
-│   to master      │     │  ┌─────────────────────────────────┐  │
-└──────────────────┘     │  │ Test Job (ubuntu-latest)        │  │
-                         │  │ - yarn install                  │  │
-                         │  │ - yarn test (flow, lint, jest) │  │
-                         │  └─────────────────────────────────┘  │
-                         │                  │                    │
-                         │                  ▼                    │
-                         │  ┌─────────────────────────────────┐  │
-                         │  │ Deploy Job (self-hosted)        │  │
-                         │  │ - Runs on Runner EC2            │  │
-                         │  │ - SSH via bastion to App EC2    │  │
-                         │  │ - docker-compose up -d --build  │  │
-                         │  └─────────────────────────────────┘  │
-                         └──────────────────────────────────────┘
-                                        │
-                                        ▼
-                         ┌──────────────────────────────────────┐
-                         │  AWS EC2 (ap-southeast-1)           │
-                         │  ┌────────────┐    ┌──────────────┐  │
-                         │  │ Runner EC2 │───▶│  App EC2     │  │
-                         │  │ (Bastion)  │SSH │  (Private)   │  │
-                         │  │ t3.micro   │    │  t3.micro    │  │
-                         │  └────────────┘    │  Port 3000   │  │
-                         │                    └──────────────┘  │
-                         └──────────────────────────────────────┘
-                                        │
-                                        ▼
-                              Playable URL (http://<app-ip>:3000)
+
+### Architecture Flow
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant GH as GitHub
+    participant GA as GitHub Actions<br/>(ubuntu-latest)
+    participant SH as Self-Hosted Runner<br/>(Runner EC2)
+    participant App as App EC2
+
+    Dev->>GH: Push to master
+
+    alt Infra Changes
+        GH->>GA: Trigger deploy-infra.yml
+        GA->>GA: Install Pulumi & uv
+        GA->>GA: pulumi up
+        GA->>App: Create EC2 Instances
+        GA->>Dev: Infrastructure Deployed
+    end
+
+    alt App Code Changes
+        GH->>GA: Trigger deploy-flatris.yml
+        GA->>GA: yarn install
+        GA->>GA: yarn test<br/>(flow, lint, jest)
+
+        alt Tests Pass
+            GA->>SH: Trigger Deploy Job
+            SH->>SH: Setup SSH Key
+            SH->>SH: Configure SSH Config<br/>(ProxyJump)
+
+            SH->>App: SSH via Bastion
+            SH->>App: rsync files
+
+            App->>App: docker-compose down
+            App->>App: docker-compose up -d --build
+
+            SH->>App: Health Check<br/>curl http://localhost:3000/
+            App-->>SH: HTTP 200 OK
+            SH->>Dev: ✅ Deployment Successful
+        else Tests Fail
+            GA->>Dev: ❌ Tests Failed
+        end
+    end
 ```
 
 ---
